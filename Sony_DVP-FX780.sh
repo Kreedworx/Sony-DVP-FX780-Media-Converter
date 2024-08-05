@@ -138,8 +138,8 @@ case $choice in
         ;;
     2)
         echo "Select conversion type:"
-        echo "1. With waveform visualizer"
-        echo "2. With embedded artwork"
+        echo "1. Visualizer"
+        echo "2. Artwork"
         read -p "Enter your choice (1 or 2): " sub_choice
         case $sub_choice in
             1)
