@@ -4,7 +4,7 @@ The output of the conversion is an Xvid video file that is compatible with the S
 This script is made specifically for use with USB drives and it therefore not tested with DVDs.
 ## Get started (Linux Desktop)
 Disclaimer: the USB Drive must be formated as FAT32.
-1. The script is in the list next to the README.md, you can click on it and get the "Raw" file.
+1. The script is in the list next to the README.md, you can click on it and download the file.
 2. In a terminal, go to the directory where the script is downloaded. 
 3. Allow it to run: `chmod +x Sony_DVP-FX780.sh`
 4. Run it: `./Sony_DVP-FX780.sh`
