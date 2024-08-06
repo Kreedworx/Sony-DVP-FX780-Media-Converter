@@ -13,9 +13,14 @@ The converted files are saved in the Desktop folder (**It must exist**).
 Disclaimer: the USB Drive must be formated as FAT32.
 You will also need an OTG adapter to plug the USB drive into the phone.
 Update the termux Linux system `pkg update && pkg upgrade`
+Make the **needed** Desktop folder: `mkdir Desktop`
 Install dependencies: `pkg install python-pip ffmpeg fzf && pip install -U --no-deps yt-dlp`
 Set up Android storage access to be able to access the media you want to convert.
-
+`pkg install termux-api && termux-setup-storage`
+Go to the directory: `cd Sony-DVP-FX780-Media-Converter`
+Allow it to run: `chmod +x Sony_DVP-FX780.sh`
+Get your media that you want to convert by copying it to the home folder of termux.
+Then, run the script (you have to be in the git cloned folder): `./Sony_DVP-FX780.sh`
 ## YouTube Links
 The script accepts both video and audio YouTube links but it is not intended for use with audio links as the music artwork will be stretched (this does not apply to music videos, and only applies to non 16:9 videos).
 ## Audio Files
