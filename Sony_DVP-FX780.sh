@@ -14,14 +14,14 @@ for cmd in yt-dlp ffmpeg fzf; do
 done
 
 # Define paths
-desktop_path=$(eval echo ~$USER/Desktop)
+current_path=$(eval echo .)
 home_directory=$(eval echo ~$USER)
 
 # Function to filter files
 filter_files() {
     find "$home_directory" -type f ! -path '*/\.*' 2>/dev/null |
     sed "s|$home_directory|~|" |
-    sed "s|$desktop_path/||" |
+    sed "s|$current_path/||" |
     fzf --prompt="$1" --height=10 --border
 }
 
@@ -59,7 +59,7 @@ convert_song_with_waveform() {
     [ "$waveform_color" = "black" ] && waveform_color="white"
 
     read -r -p "Enter the output video filename (without extension): " output_filename || return
-    local output_video="$desktop_path/$output_filename.avi"
+    local output_video="$current_path/$output_filename.avi"
 
     ffmpeg -i "$song_file" -filter_complex "[0:a]showwaves=s=480x270:mode=cline:colors=$waveform_color[v];[0:a]aformat=channel_layouts=stereo[a]" -map "[v]" -map "[a]" -c:v libxvid -b:v 1000k -qscale:v 3 -c:a mp2 -b:a 192k "$output_video"
     echo "Output saved to $output_video"
@@ -80,7 +80,7 @@ bulk_convert_waveform() {
     for song_file in "${files[@]}"; do
         is_audio "$song_file" || continue
         local base_name=$(basename "$song_file" | sed 's/\.[^.]*$//')
-        local output_video="$desktop_path/${base_name}_waveform.avi"
+        local output_video="$current_path/${base_name}_waveform.avi"
         echo "Processing: $song_file"
         ffmpeg -y -i "$song_file" -filter_complex "[0:a]showwaves=s=480x270:mode=cline:colors=$waveform_color[v];[0:a]aformat=channel_layouts=stereo[a]" -map "[v]" -map "[a]" -c:v libxvid -b:v 1000k -qscale:v 3 -c:a mp2 -b:a 192k "$output_video"
     done
@@ -93,7 +93,7 @@ convert_song_with_artwork() {
     song_file=$(eval echo "$song_file")
 
     read -r -p "Enter output video filename (without extension): " output_filename || return
-    local output_video="$desktop_path/$output_filename.avi"
+    local output_video="$current_path/$output_filename.avi"
 
     local artwork
     artwork=$(ffmpeg -i "$song_file" -an -vcodec copy -f image2 -y artwork.png 2>/dev/null && echo "artwork.png" || echo "")
@@ -117,7 +117,7 @@ bulk_convert_artwork() {
     for song_file in "${files[@]}"; do
         is_audio "$song_file" || continue
         local base_name=$(basename "$song_file" | sed 's/\.[^.]*$//')
-        local output_video="$desktop_path/${base_name}_artwork.avi"
+        local output_video="$current_path/${base_name}_artwork.avi"
         local artwork
         artwork=$(ffmpeg -i "$song_file" -an -vcodec copy -f image2 -y artwork.png 2>/dev/null && echo "artwork.png" || echo "")
 
@@ -138,7 +138,7 @@ convert_local_video() {
     input_video=$(eval echo "$input_video")
 
     read -r -p "Enter output video filename (without extension): " output_filename || return
-    local output_video="$desktop_path/$output_filename.avi"
+    local output_video="$current_path/$output_filename.avi"
 
     ffmpeg -i "$input_video" -vf "scale=480:270,setsar=1:1" -vcodec libxvid -b:v 1000k -qscale:v 3 -acodec mp2 -b:a 192k "$output_video"
     echo "Output saved to $output_video"
@@ -154,7 +154,7 @@ bulk_convert_video() {
     for input_video in "${files[@]}"; do
         is_video "$input_video" || continue
         local base_name=$(basename "$input_video" | sed 's/\.[^.]*$//')
-        local output_video="$desktop_path/${base_name}.avi"
+        local output_video="$current_path/${base_name}.avi"
 
         echo "Processing: $input_video"
         ffmpeg -y -i "$input_video" -vf "scale=480:270,setsar=1:1" -vcodec libxvid -b:v 1000k -qscale:v 3 -acodec mp2 -b:a 192k "$output_video"
@@ -165,7 +165,7 @@ bulk_convert_video() {
 download_and_convert_youtube() {
     read -r -p "Enter the YouTube video URL: " youtube_url || return
     read -r -p "Enter output video filename (without extension): " output_filename || return
-    local output_video="$desktop_path/$output_filename.avi"
+    local output_video="$current_path/$output_filename.avi"
 
     yt-dlp -f bestvideo+bestaudio "$youtube_url" -o - | \
     ffmpeg -i pipe:0 -vf "scale=480:270,setsar=1:1" -vcodec libxvid -b:v 1000k -qscale:v 3 -acodec mp2 -b:a 192k "$output_video"
