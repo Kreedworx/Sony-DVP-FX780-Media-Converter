@@ -14,10 +14,10 @@ for cmd in yt-dlp ffmpeg fzf; do
 done
 
 # Define paths
-desktop_path=$(eval echo ~$USER/Desktop)  # Expand ~ to full path
-home_directory=$(eval echo ~$USER)        # Expand ~ to full path
+desktop_path=$(eval echo ~$USER/Desktop)
+home_directory=$(eval echo ~$USER)
 
-# Function to filter files, excluding hidden ones and handling permissions
+# Function to filter files
 filter_files() {
     find "$home_directory" -type f ! -path '*/\.*' 2>/dev/null |
     sed "s|$home_directory|~|" |
@@ -25,107 +25,154 @@ filter_files() {
     fzf --prompt="$1" --height=10 --border
 }
 
-# Function to convert songs to video with waveform visualizer
-convert_song_with_waveform() {
-    echo "Enter the path to the song file:"
-    local song_file
-    song_file=$(filter_files "Song file: ") || { echo "Failed to select song file. Exiting."; exit 1; }
-    song_file=$(eval echo "$song_file")  # Expand ~ to full path
+# Select a folder and get matching files
+select_files_in_directory() {
+    local folder
+    folder=$(find "$home_directory" -type d ! -path '*/\.*' 2>/dev/null | fzf --prompt="Select a directory: " --height=10 --border)
+    [ -z "$folder" ] && return 1
+    folder=$(eval echo "$folder")
 
-    # List of waveform colors
-    local color_options=("black" "red" "green" "blue" "yellow" "cyan" "magenta" "gray")
-
-    echo "Select the waveform color:"
-    local waveform_color
-    waveform_color=$(printf "%s\n" "${color_options[@]}" | fzf --prompt="Waveform color: " --height=10 --border) || { echo "Failed to select waveform color. Exiting."; exit 1; }
-
-    # Map "black" to "white" internally
-    if [ "$waveform_color" = "black" ]; then
-        waveform_color="white"
-    fi
-
-    echo "Enter the output video filename (without extension):"
-    local output_filename
-    read -r output_filename || { echo "Failed to enter output filename. Exiting."; exit 1; }
-    local output_video="$desktop_path/$output_filename.avi"
-
-    echo "Converting song to video with waveform visualizer..."
-    
-    if ffmpeg -i "$song_file" -filter_complex "[0:a]showwaves=s=480x270:mode=cline:colors=$waveform_color[v];[0:a]aformat=channel_layouts=stereo[a]" -map "[v]" -map "[a]" -c:v libxvid -b:v 1000k -qscale:v 3 -c:a mp2 -b:a 192k "$output_video"; then
-        echo "Song conversion complete. The output video is saved at $output_video"
+    if [ -d "$folder" ]; then
+        find "$folder" -maxdepth 1 -type f 2>/dev/null
     else
-        echo "Error: Conversion failed. Please check the file paths and parameters."
+        echo "Invalid folder selected." >&2
+        return 1
     fi
 }
 
-# Function to convert songs to video with embedded artwork
-convert_song_with_artwork() {
-    echo "Enter the path to the song file:"
-    local song_file
-    song_file=$(filter_files "Song file: ") || { echo "Failed to select song file. Exiting."; exit 1; }
-    song_file=$(eval echo "$song_file")  # Expand ~ to full path
+is_audio() {
+    ffprobe -v error -select_streams a -show_entries stream=codec_type -of csv=p=0 "$1" 2>/dev/null | grep -q audio
+}
 
-    echo "Enter the output video filename (without extension):"
-    local output_filename
-    read -r output_filename || { echo "Failed to enter output filename. Exiting."; exit 1; }
+is_video() {
+    ffprobe -v error -select_streams v -show_entries stream=codec_type -of csv=p=0 "$1" 2>/dev/null | grep -q video
+}
+
+convert_song_with_waveform() {
+    local song_file
+    song_file=$(filter_files "Song file: ") || { echo "No file selected."; return; }
+    song_file=$(eval echo "$song_file")
+
+    local color_options=("black" "red" "green" "blue" "yellow" "cyan" "magenta" "gray")
+    local waveform_color
+    waveform_color=$(printf "%s\n" "${color_options[@]}" | fzf --prompt="Waveform color: " --height=10 --border) || return
+    [ "$waveform_color" = "black" ] && waveform_color="white"
+
+    read -r -p "Enter the output video filename (without extension): " output_filename || return
     local output_video="$desktop_path/$output_filename.avi"
 
-    echo "Converting song to video with embedded artwork..."
+    ffmpeg -i "$song_file" -filter_complex "[0:a]showwaves=s=480x270:mode=cline:colors=$waveform_color[v];[0:a]aformat=channel_layouts=stereo[a]" -map "[v]" -map "[a]" -c:v libxvid -b:v 1000k -qscale:v 3 -c:a mp2 -b:a 192k "$output_video"
+    echo "Output saved to $output_video"
+}
 
-    # Extract artwork
+bulk_convert_waveform() {
+    local color_options=("black" "red" "green" "blue" "yellow" "cyan" "magenta" "gray")
+    local waveform_color
+    waveform_color=$(printf "%s\n" "${color_options[@]}" | fzf --prompt="Waveform color: " --height=10 --border) || return
+    [ "$waveform_color" = "black" ] && waveform_color="white"
+
+    mapfile -t files < <(select_files_in_directory)
+    if [ ${#files[@]} -eq 0 ]; then
+        echo "No files found."
+        return
+    fi
+
+    for song_file in "${files[@]}"; do
+        is_audio "$song_file" || continue
+        local base_name=$(basename "$song_file" | sed 's/\.[^.]*$//')
+        local output_video="$desktop_path/${base_name}_waveform.avi"
+        echo "Processing: $song_file"
+        ffmpeg -y -i "$song_file" -filter_complex "[0:a]showwaves=s=480x270:mode=cline:colors=$waveform_color[v];[0:a]aformat=channel_layouts=stereo[a]" -map "[v]" -map "[a]" -c:v libxvid -b:v 1000k -qscale:v 3 -c:a mp2 -b:a 192k "$output_video"
+    done
+    echo "Batch waveform conversion done."
+}
+
+convert_song_with_artwork() {
+    local song_file
+    song_file=$(filter_files "Song file: ") || return
+    song_file=$(eval echo "$song_file")
+
+    read -r -p "Enter output video filename (without extension): " output_filename || return
+    local output_video="$desktop_path/$output_filename.avi"
+
+    local artwork
     artwork=$(ffmpeg -i "$song_file" -an -vcodec copy -f image2 -y artwork.png 2>/dev/null && echo "artwork.png" || echo "")
 
     if [ -f "$artwork" ]; then
-        # Use artwork as video background with 270x270 resolution
-        if ffmpeg -i "$song_file" -i "$artwork" -filter_complex "[1:v]scale=270:270,setsar=1[v];[0:a]aformat=channel_layouts=stereo[a]" -map "[v]" -map "[a]" -c:v libxvid -b:v 1000k -qscale:v 3 -c:a mp2 -b:a 192k "$output_video"; then
-            echo "Song conversion complete. The output video is saved at $output_video"
-        else
-            echo "Error: Conversion failed. Please check the file paths and parameters."
-        fi
+        ffmpeg -i "$song_file" -i "$artwork" -filter_complex "[1:v]scale=270:270,setsar=1[v];[0:a]aformat=channel_layouts=stereo[a]" -map "[v]" -map "[a]" -c:v libxvid -b:v 1000k -qscale:v 3 -c:a mp2 -b:a 192k "$output_video"
         rm "$artwork"
+        echo "Output saved to $output_video"
     else
-        echo "Error: Failed to extract artwork. Exiting."
+        echo "Artwork extraction failed."
     fi
 }
 
-# Function to download and convert YouTube videos
-download_and_convert_youtube() {
-    read -p "Enter the YouTube video URL: " youtube_url
-    read -p "Enter the output video filename (without extension): " output_filename
-    local output_video="$desktop_path/$output_filename.avi"
-
-    echo "Downloading and converting YouTube video..."
-
-    if yt-dlp -f bestvideo+bestaudio "$youtube_url" -o - | \
-       ffmpeg -i pipe:0 -vf "scale=480:270,setsar=1:1" -vcodec libxvid -b:v 1000k -qscale:v 3 -acodec mp2 -b:a 192k "$output_video"; then
-        echo "YouTube video conversion complete. The output video is saved at $output_video"
-    else
-        echo "Error: Conversion failed. Please check the URL and parameters."
+bulk_convert_artwork() {
+    mapfile -t files < <(select_files_in_directory)
+    if [ ${#files[@]} -eq 0 ]; then
+        echo "No files found."
+        return
     fi
+
+    for song_file in "${files[@]}"; do
+        is_audio "$song_file" || continue
+        local base_name=$(basename "$song_file" | sed 's/\.[^.]*$//')
+        local output_video="$desktop_path/${base_name}_artwork.avi"
+        local artwork
+        artwork=$(ffmpeg -i "$song_file" -an -vcodec copy -f image2 -y artwork.png 2>/dev/null && echo "artwork.png" || echo "")
+
+        if [ -f "$artwork" ]; then
+            ffmpeg -i "$song_file" -i "$artwork" -filter_complex "[1:v]scale=270:270,setsar=1[v];[0:a]aformat=channel_layouts=stereo[a]" -map "[v]" -map "[a]" -c:v libxvid -b:v 1000k -qscale:v 3 -c:a mp2 -b:a 192k "$output_video"
+            rm "$artwork"
+            echo "Output saved to $output_video"
+        else
+            echo "Artwork extraction failed for $song_file"
+        fi
+    done
+    echo "Batch artwork conversion done."
 }
 
-# Function to convert a local video
 convert_local_video() {
-    echo "Enter the path to the input video:"
     local input_video
-    input_video=$(filter_files "Input video: ") || { echo "Failed to select input video. Exiting."; exit 1; }
-    input_video=$(eval echo "$input_video")  # Expand ~ to full path
+    input_video=$(filter_files "Input video: ") || return
+    input_video=$(eval echo "$input_video")
 
-    echo "Enter the output video filename (without extension):"
-    local output_filename
-    read -r output_filename || { echo "Failed to enter output filename. Exiting."; exit 1; }
+    read -r -p "Enter output video filename (without extension): " output_filename || return
     local output_video="$desktop_path/$output_filename.avi"
 
-    echo "Converting local video..."
-
-    if ffmpeg -i "$input_video" -vf "scale=480:270,setsar=1:1" -vcodec libxvid -b:v 1000k -qscale:v 3 -acodec mp2 -b:a 192k "$output_video"; then
-        echo "Local video conversion complete. The output video is saved at $output_video"
-    else
-        echo "Error: Conversion failed. Please check the input file and parameters."
-    fi
+    ffmpeg -i "$input_video" -vf "scale=480:270,setsar=1:1" -vcodec libxvid -b:v 1000k -qscale:v 3 -acodec mp2 -b:a 192k "$output_video"
+    echo "Output saved to $output_video"
 }
 
-# Main menu
+bulk_convert_video() {
+    mapfile -t files < <(select_files_in_directory)
+    if [ ${#files[@]} -eq 0 ]; then
+        echo "No files found."
+        return
+    fi
+
+    for input_video in "${files[@]}"; do
+        is_video "$input_video" || continue
+        local base_name=$(basename "$input_video" | sed 's/\.[^.]*$//')
+        local output_video="$desktop_path/${base_name}.avi"
+
+        echo "Processing: $input_video"
+        ffmpeg -y -i "$input_video" -vf "scale=480:270,setsar=1:1" -vcodec libxvid -b:v 1000k -qscale:v 3 -acodec mp2 -b:a 192k "$output_video"
+    done
+    echo "Batch video conversion done."
+}
+
+download_and_convert_youtube() {
+    read -r -p "Enter the YouTube video URL: " youtube_url || return
+    read -r -p "Enter output video filename (without extension): " output_filename || return
+    local output_video="$desktop_path/$output_filename.avi"
+
+    yt-dlp -f bestvideo+bestaudio "$youtube_url" -o - | \
+    ffmpeg -i pipe:0 -vf "scale=480:270,setsar=1:1" -vcodec libxvid -b:v 1000k -qscale:v 3 -acodec mp2 -b:a 192k "$output_video"
+    echo "Output saved to $output_video"
+}
+
+# Menu
 echo "Select the operation:"
 echo "1. YouTube Video"
 echo "2. Audio File"
@@ -143,10 +190,26 @@ case $choice in
         read -p "Enter your choice (1 or 2): " sub_choice
         case $sub_choice in
             1)
-                convert_song_with_waveform
+                echo "Bulk process or single?"
+                echo "1. Single"
+                echo "2. Bulk"
+                read -p "Enter choice: " waveform_mode
+                case $waveform_mode in
+                    1) convert_song_with_waveform ;;
+                    2) bulk_convert_waveform ;;
+                    *) echo "Invalid." ;;
+                esac
                 ;;
             2)
-                convert_song_with_artwork
+                echo "Bulk process or single?"
+                echo "1. Single"
+                echo "2. Bulk"
+                read -p "Enter choice: " artwork_mode
+                case $artwork_mode in
+                    1) convert_song_with_artwork ;;
+                    2) bulk_convert_artwork ;;
+                    *) echo "Invalid." ;;
+                esac
                 ;;
             *)
                 echo "Invalid choice. Exiting."
@@ -154,7 +217,15 @@ case $choice in
         esac
         ;;
     3)
-        convert_local_video
+        echo "Bulk process or single?"
+        echo "1. Single"
+        echo "2. Bulk"
+        read -p "Enter choice: " video_mode
+        case $video_mode in
+            1) convert_local_video ;;
+            2) bulk_convert_video ;;
+            *) echo "Invalid." ;;
+        esac
         ;;
     *)
         echo "Invalid choice. Exiting."
