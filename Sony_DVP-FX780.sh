@@ -80,7 +80,7 @@ bulk_convert_waveform() {
     for song_file in "${files[@]}"; do
         is_audio "$song_file" || continue
         local base_name=$(basename "$song_file" | sed 's/\.[^.]*$//')
-        local output_video="$current_path/${base_name}_waveform.avi"
+        local output_video="$current_path/${base_name}.avi"
         echo "Processing: $song_file"
         ffmpeg -y -i "$song_file" -filter_complex "[0:a]showwaves=s=480x270:mode=cline:colors=$waveform_color[v];[0:a]aformat=channel_layouts=stereo[a]" -map "[v]" -map "[a]" -c:v libxvid -b:v 1000k -qscale:v 3 -c:a mp2 -b:a 192k "$output_video"
     done
@@ -117,7 +117,7 @@ bulk_convert_artwork() {
     for song_file in "${files[@]}"; do
         is_audio "$song_file" || continue
         local base_name=$(basename "$song_file" | sed 's/\.[^.]*$//')
-        local output_video="$current_path/${base_name}_artwork.avi"
+        local output_video="$current_path/${base_name}.avi"
         local artwork
         artwork=$(ffmpeg -i "$song_file" -an -vcodec copy -f image2 -y artwork.png 2>/dev/null && echo "artwork.png" || echo "")
 
